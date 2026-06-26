@@ -1,83 +1,120 @@
 // المسار: vera-law/app/contact/page.tsx
-// نوع التعديل: فورم تواصل فعلي يحفظ رسائل العملاء في localStorage
+// نوع التعديل: ربط صفحة التواصل وقسم طلب الاستشارة بقاعدة بيانات Supabase بدل localStorage
 
 "use client";
 
 import { useEffect, useState } from "react";
+import { supabase } from "../lib/supabase";
 
-type ClientMessage = {
-  id: number;
-  name: string;
-  phone: string;
+type SiteSettings = {
   email: string;
-  message: string;
-  date: string;
+  phone: string;
+  whatsapp: string;
+  address: string;
+};
+
+const defaultSettings: SiteSettings = {
+  email: "elshamyahmedmahmoud@gmail.com",
+  phone: "+20 109 134 5672",
+  whatsapp: "201091345672",
+  address: "مدينة الحمام - مطروح",
 };
 
 export default function ContactPage() {
-  const [email, setEmail] = useState("elshamyahmedmahmoud@gmail.com");
-  const [phone, setPhone] = useState("+20 109 134 5672");
-  const [whatsapp, setWhatsapp] = useState("201091345672");
-  const [address, setAddress] = useState("مدينة الحمام - مطروح");
+  const [settings, setSettings] = useState<SiteSettings>(defaultSettings);
 
   const [clientName, setClientName] = useState("");
   const [clientPhone, setClientPhone] = useState("");
   const [clientEmail, setClientEmail] = useState("");
   const [clientMessage, setClientMessage] = useState("");
+
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [settingsLoading, setSettingsLoading] = useState(true);
 
   useEffect(() => {
-    const savedData = localStorage.getItem("vera_site_data");
+    async function loadSettings() {
+      try {
+        const { data, error: settingsError } = await supabase
+          .from("site_settings")
+          .select("email, phone, whatsapp, address")
+          .order("id", { ascending: true })
+          .limit(1)
+          .maybeSingle();
 
-    if (savedData) {
-      const data = JSON.parse(savedData);
+        if (settingsError) {
+          console.error("Supabase settings error:", settingsError);
+          return;
+        }
 
-      setEmail(data.email || "elshamyahmedmahmoud@gmail.com");
-      setPhone(data.phone || "+20 109 134 5672");
-      setWhatsapp(data.whatsapp || "201091345672");
-      setAddress(data.address || "مدينة الحمام - مطروح");
+        if (data) {
+          setSettings({
+            email: data.email || defaultSettings.email,
+            phone: data.phone || defaultSettings.phone,
+            whatsapp: data.whatsapp || defaultSettings.whatsapp,
+            address: data.address || defaultSettings.address,
+          });
+        }
+      } catch (err) {
+        console.error("Load settings failed:", err);
+      } finally {
+        setSettingsLoading(false);
+      }
     }
+
+    loadSettings();
   }, []);
 
-  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
-    if (!clientName.trim() || !clientPhone.trim() || !clientMessage.trim()) {
+    const name = clientName.trim();
+    const phone = clientPhone.trim();
+    const email = clientEmail.trim();
+    const message = clientMessage.trim();
+
+    if (!name || !phone || !message) {
       setError("من فضلك اكتب الاسم ورقم الهاتف وتفاصيل الرسالة.");
       setSent(false);
       return;
     }
 
-    const newMessage: ClientMessage = {
-      id: Date.now(),
-      name: clientName,
-      phone: clientPhone,
-      email: clientEmail,
-      message: clientMessage,
-      date: new Date().toLocaleString("ar-EG"),
-    };
-
-    const oldMessages = localStorage.getItem("vera_client_messages");
-    const messages: ClientMessage[] = oldMessages ? JSON.parse(oldMessages) : [];
-
-    const updatedMessages = [newMessage, ...messages];
-
-    localStorage.setItem(
-      "vera_client_messages",
-      JSON.stringify(updatedMessages)
-    );
-
-    setClientName("");
-    setClientPhone("");
-    setClientEmail("");
-    setClientMessage("");
+    setLoading(true);
     setError("");
-    setSent(true);
+    setSent(false);
 
-    setTimeout(() => {
-      setSent(false);
-    }, 3500);
+    try {
+      const { error: insertError } = await supabase
+        .from("client_messages")
+        .insert({
+          name,
+          phone,
+          email: email || null,
+          message,
+        });
+
+      if (insertError) {
+        console.error("Supabase insert error:", insertError);
+        setError("حدث خطأ أثناء إرسال الرسالة. حاول مرة أخرى.");
+        return;
+      }
+
+      setClientName("");
+      setClientPhone("");
+      setClientEmail("");
+      setClientMessage("");
+      setSent(true);
+
+      setTimeout(() => {
+        setSent(false);
+      }, 3500);
+    } catch (err) {
+      console.error("Submit failed:", err);
+      setError("حدث خطأ غير متوقع أثناء الإرسال. حاول مرة أخرى.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -104,26 +141,33 @@ export default function ContactPage() {
             <div className="rounded-[2.5rem] border border-amber-300/20 bg-gradient-to-br from-amber-300/10 to-white/[0.04] p-8 shadow-2xl backdrop-blur-2xl md:p-10">
               <h2 className="mb-6 text-3xl font-black">بيانات التواصل</h2>
 
+              {settingsLoading && (
+                <div className="mb-5 rounded-2xl border border-white/10 bg-white/10 p-4 text-gray-300">
+                  جاري تحميل بيانات التواصل...
+                </div>
+              )}
+
               <div className="space-y-4">
                 <a
-                  href={`mailto:${email}`}
+                  href={`mailto:${settings.email}`}
                   className="block rounded-2xl border border-white/10 bg-white/10 p-5 text-white transition hover:bg-white hover:text-black"
                   dir="ltr"
                 >
-                  {email}
+                  {settings.email}
                 </a>
 
                 <a
-                  href={`https://wa.me/${whatsapp}`}
+                  href={`https://wa.me/${settings.whatsapp}`}
                   target="_blank"
+                  rel="noopener noreferrer"
                   className="block rounded-2xl border border-white/10 bg-amber-400 p-5 font-bold text-black transition hover:bg-amber-300"
                   dir="ltr"
                 >
-                  WhatsApp: {phone}
+                  WhatsApp: {settings.phone}
                 </a>
 
                 <div className="rounded-2xl border border-white/10 bg-white/10 p-5 text-white">
-                  {address}
+                  {settings.address}
                 </div>
               </div>
 
@@ -170,14 +214,14 @@ export default function ContactPage() {
                 value={clientName}
                 onChange={(e) => setClientName(e.target.value)}
                 placeholder="الاسم"
-                className="rounded-2xl border border-white/10 bg-black/35 px-5 py-4 text-white outline-none transition focus:border-amber-300"
+                className="rounded-2xl border border-white/10 bg-black/35 px-5 py-4 text-white outline-none transition placeholder:text-gray-500 focus:border-amber-300"
               />
 
               <input
                 value={clientPhone}
                 onChange={(e) => setClientPhone(e.target.value)}
                 placeholder="رقم الهاتف"
-                className="rounded-2xl border border-white/10 bg-black/35 px-5 py-4 text-white outline-none transition focus:border-amber-300"
+                className="rounded-2xl border border-white/10 bg-black/35 px-5 py-4 text-white outline-none transition placeholder:text-gray-500 focus:border-amber-300"
                 dir="ltr"
               />
 
@@ -185,7 +229,7 @@ export default function ContactPage() {
                 value={clientEmail}
                 onChange={(e) => setClientEmail(e.target.value)}
                 placeholder="البريد الإلكتروني - اختياري"
-                className="rounded-2xl border border-white/10 bg-black/35 px-5 py-4 text-white outline-none transition focus:border-amber-300 md:col-span-2"
+                className="rounded-2xl border border-white/10 bg-black/35 px-5 py-4 text-white outline-none transition placeholder:text-gray-500 focus:border-amber-300 md:col-span-2"
                 dir="ltr"
               />
 
@@ -194,20 +238,20 @@ export default function ContactPage() {
                 onChange={(e) => setClientMessage(e.target.value)}
                 placeholder="اكتب تفاصيل الاستشارة أو الرسالة"
                 rows={6}
-                className="rounded-2xl border border-white/10 bg-black/35 px-5 py-4 text-white outline-none transition focus:border-amber-300 md:col-span-2"
+                className="rounded-2xl border border-white/10 bg-black/35 px-5 py-4 text-white outline-none transition placeholder:text-gray-500 focus:border-amber-300 md:col-span-2"
               />
 
               <button
                 type="submit"
-                className="rounded-full bg-amber-400 px-8 py-4 font-black text-black transition hover:bg-amber-300 md:col-span-2"
+                disabled={loading}
+                className="rounded-full bg-amber-400 px-8 py-4 font-black text-black transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60 md:col-span-2"
               >
-                إرسال الطلب
+                {loading ? "جاري الإرسال..." : "إرسال الطلب"}
               </button>
             </form>
 
             <p className="mt-5 text-sm text-gray-400">
-              الرسائل محفوظة حاليًا على نفس الجهاز والمتصفح، وستظهر داخل لوحة
-              التحكم في قسم رسائل العملاء.
+              سيتم حفظ طلبك في قاعدة بيانات الموقع، ويظهر داخل لوحة التحكم.
             </p>
           </div>
         </div>
