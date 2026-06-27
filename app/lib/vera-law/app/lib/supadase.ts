@@ -1,5 +1,5 @@
 // المسار: vera-law/app/lib/supabase.ts
-// نوع التعديل: ملف الاتصال بقاعدة بيانات Supabase
+// نوع التعديل: ملف الاتصال الصحيح بقاعدة بيانات Supabase
 
 import { createClient } from "@supabase/supabase-js";
 
