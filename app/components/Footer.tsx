@@ -38,9 +38,7 @@ export default function Footer() {
             <Link href="/contact" className="block transition hover:text-amber-300">
               تواصل معنا
             </Link>
-            <Link href="/admin" className="block transition hover:text-amber-300">
-              لوحة التحكم
-            </Link>
+            
           </div>
         </div>
 

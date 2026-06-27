@@ -1,5 +1,5 @@
 // المسار: vera-law/app/admin/login/page.tsx
-// نوع التعديل: صفحة دخول لوحة تحكم VERA
+// نوع التعديل: صفحة دخول آمنة للوحة التحكم باستخدام API server-side
 
 "use client";
 
@@ -8,19 +8,40 @@ import { useRouter } from "next/navigation";
 
 export default function AdminLoginPage() {
   const router = useRouter();
+
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  function handleLogin(e: React.FormEvent<HTMLFormElement>) {
+  async function handleLogin(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
-    if (password === "vera2026") {
-      localStorage.setItem("vera_admin_auth", "true");
-      router.push("/admin");
-      return;
-    }
+    setLoading(true);
+    setError("");
 
-    setError("كلمة المرور غير صحيحة");
+    try {
+      const response = await fetch("/api/admin/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ password }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        setError(result.message || "كلمة المرور غير صحيحة.");
+        return;
+      }
+
+      router.push("/admin");
+      router.refresh();
+    } catch {
+      setError("حدث خطأ أثناء تسجيل الدخول. حاول مرة أخرى.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -30,12 +51,10 @@ export default function AdminLoginPage() {
           VERA ADMIN LOGIN
         </p>
 
-        <h1 className="mb-6 text-4xl font-black">
-          دخول لوحة التحكم
-        </h1>
+        <h1 className="mb-6 text-4xl font-black">دخول لوحة التحكم</h1>
 
         <p className="mb-8 leading-8 text-gray-300">
-          أدخل كلمة المرور للوصول إلى لوحة إدارة بيانات الموقع.
+          أدخل كلمة مرور المدير للوصول إلى لوحة إدارة الموقع.
         </p>
 
         <form onSubmit={handleLogin} className="space-y-5">
@@ -61,15 +80,12 @@ export default function AdminLoginPage() {
 
           <button
             type="submit"
-            className="w-full rounded-full bg-amber-400 px-8 py-4 font-black text-black transition hover:bg-amber-300"
+            disabled={loading}
+            className="w-full rounded-full bg-amber-400 px-8 py-4 font-black text-black transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            دخول
+            {loading ? "جاري الدخول..." : "دخول"}
           </button>
         </form>
-
-        <p className="mt-6 text-center text-sm text-gray-500">
-          كلمة المرور المبدئية: vera2026
-        </p>
       </section>
     </main>
   );

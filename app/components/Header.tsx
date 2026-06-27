@@ -36,9 +36,8 @@ export default function Header() {
             تواصل معنا
           </Link>
 
-          <Link href="/admin" className="transition hover:text-amber-300">
-            لوحة التحكم
-          </Link>
+        
+          
         </div>
 
         <a

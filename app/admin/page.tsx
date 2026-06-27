@@ -71,14 +71,7 @@ export default function AdminPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    const isAuth = localStorage.getItem("vera_admin_auth");
-
-    if (isAuth !== "true") {
-      router.push("/admin/login");
-      return;
-    }
-
-    loadAllData();
+   loadAllData();
   }, [router]);
 
   async function loadAllData() {
@@ -237,10 +230,14 @@ export default function AdminPage() {
     }
   }
 
-  function logout() {
-    localStorage.removeItem("vera_admin_auth");
-    router.push("/admin/login");
-  }
+  async function logout() {
+  await fetch("/api/admin/logout", {
+    method: "POST",
+  });
+
+  router.push("/admin/login");
+  router.refresh();
+}
 
   function updateService(index: number, field: keyof ServiceItem, value: string) {
     const updated = [...services];
