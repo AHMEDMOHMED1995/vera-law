@@ -1,37 +1,46 @@
 // المسار: vera-law/app/admin/page.tsx
-// نوع التعديل: لوحة تحكم فعلية مبدئية لإدارة بيانات VERA + عرض رسائل العملاء
+// نوع التعديل: لوحة تحكم VERA مربوطة فعليًا بقاعدة بيانات Supabase
 
 "use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "../lib/supabase";
 
 type ServiceItem = {
+  id?: number;
   title: string;
-  text: string;
+  description: string;
+  sort_order: number;
 };
 
 type ClientMessage = {
   id: number;
   name: string;
   phone: string;
-  email: string;
+  email: string | null;
   message: string;
-  date: string;
+  created_at: string;
 };
 
 const defaultServices: ServiceItem[] = [
   {
     title: "المحاماة والتقاضي",
-    text: "تمثيل قانوني أمام المحاكم، إعداد المذكرات، إدارة القضايا، متابعة الجلسات، وصياغة الدفوع القانونية باحتراف.",
+    description:
+      "تمثيل قانوني أمام المحاكم، إعداد المذكرات، متابعة الجلسات، وصياغة الدفوع القانونية في مختلف المنازعات.",
+    sort_order: 1,
   },
   {
     title: "الاستشارات القانونية",
-    text: "استشارات دقيقة للأفراد والشركات في المسائل المدنية والتجارية والجنائية والأحوال الشخصية والعقارية.",
+    description:
+      "تقديم استشارات قانونية دقيقة للأفراد والشركات لمساعدتهم على فهم الموقف القانوني واتخاذ القرار الصحيح.",
+    sort_order: 2,
   },
   {
-    title: "الشركات والأعمال",
-    text: "تأسيس الشركات، صياغة العقود، مراجعة الاتفاقيات، الحوكمة، وتقديم الدعم القانوني للمشروعات التجارية.",
+    title: "تأسيس الشركات وخدمات الأعمال",
+    description:
+      "تأسيس الشركات، إعداد العقود الداخلية، تنظيم الشراكات، ودعم المشروعات قانونيًا منذ بداية التأسيس وحتى التشغيل.",
+    sort_order: 3,
   },
 ];
 
@@ -39,6 +48,7 @@ export default function AdminPage() {
   const router = useRouter();
 
   const [loaded, setLoaded] = useState(false);
+  const [settingsId, setSettingsId] = useState<number | null>(null);
 
   const [email, setEmail] = useState("elshamyahmedmahmoud@gmail.com");
   const [phone, setPhone] = useState("+20 109 134 5672");
@@ -46,16 +56,19 @@ export default function AdminPage() {
   const [address, setAddress] = useState("مدينة الحمام - مطروح");
 
   const [heroTitle, setHeroTitle] = useState(
-    "حلول قانونية وتجارية واستثمارية بمعايير دولية"
+    "مؤسسة متخصصة في الخدمات القانونية والتجارية والاستثمارية بمعايير مهنية حديثة"
   );
 
   const [vision, setVision] = useState(
-    "رؤيتنا أن الخدمة القانونية الحديثة لا تقتصر على حل النزاعات، بل تمتد إلى حماية القرار التجاري، دعم الاستثمار، إدارة المخاطر، وبناء علاقة ثقة طويلة المدى مع العميل."
+    "نسعى في VERA إلى إعادة تعريف مفهوم الخدمة القانونية الحديثة، بحيث لا تقتصر على معالجة النزاعات، بل تمتد إلى صناعة القرار، حماية الاستثمار، إدارة المخاطر، وبناء شراكة مهنية طويلة الأمد مع الأفراد والشركات والمستثمرين."
   );
 
   const [services, setServices] = useState<ServiceItem[]>(defaultServices);
   const [messages, setMessages] = useState<ClientMessage[]>([]);
+
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     const isAuth = localStorage.getItem("vera_admin_auth");
@@ -65,52 +78,163 @@ export default function AdminPage() {
       return;
     }
 
-    const savedData = localStorage.getItem("vera_site_data");
-
-    if (savedData) {
-      const data = JSON.parse(savedData);
-
-      setEmail(data.email || "elshamyahmedmahmoud@gmail.com");
-      setPhone(data.phone || "+20 109 134 5672");
-      setWhatsapp(data.whatsapp || "201091345672");
-      setAddress(data.address || "مدينة الحمام - مطروح");
-      setHeroTitle(
-        data.heroTitle ||
-          "حلول قانونية وتجارية واستثمارية بمعايير دولية"
-      );
-      setVision(
-        data.vision ||
-          "رؤيتنا أن الخدمة القانونية الحديثة لا تقتصر على حل النزاعات، بل تمتد إلى حماية القرار التجاري، دعم الاستثمار، إدارة المخاطر، وبناء علاقة ثقة طويلة المدى مع العميل."
-      );
-      setServices(data.services || defaultServices);
-    }
-
-    const savedMessages = localStorage.getItem("vera_client_messages");
-
-    if (savedMessages) {
-      setMessages(JSON.parse(savedMessages));
-    }
-
-    setLoaded(true);
+    loadAllData();
   }, [router]);
 
-  function saveData() {
-    const data = {
-      email,
-      phone,
-      whatsapp,
-      address,
-      heroTitle,
-      vision,
-      services,
-    };
+  async function loadAllData() {
+    setError("");
 
-    localStorage.setItem("vera_site_data", JSON.stringify(data));
-    setSaved(true);
+    try {
+      const { data: settingsData, error: settingsError } = await supabase
+        .from("site_settings")
+        .select("*")
+        .order("id", { ascending: true })
+        .limit(1)
+        .maybeSingle();
 
-    setTimeout(() => {
-      setSaved(false);
-    }, 2500);
+      if (settingsError) {
+        console.error(settingsError);
+        setError("حدث خطأ أثناء تحميل إعدادات الموقع.");
+      }
+
+      if (settingsData) {
+        setSettingsId(settingsData.id);
+        setEmail(settingsData.email || "elshamyahmedmahmoud@gmail.com");
+        setPhone(settingsData.phone || "+20 109 134 5672");
+        setWhatsapp(settingsData.whatsapp || "201091345672");
+        setAddress(settingsData.address || "مدينة الحمام - مطروح");
+        setHeroTitle(
+          settingsData.hero_title ||
+            "مؤسسة متخصصة في الخدمات القانونية والتجارية والاستثمارية بمعايير مهنية حديثة"
+        );
+        setVision(
+          settingsData.vision ||
+            "نسعى في VERA إلى إعادة تعريف مفهوم الخدمة القانونية الحديثة، بحيث لا تقتصر على معالجة النزاعات، بل تمتد إلى صناعة القرار، حماية الاستثمار، إدارة المخاطر، وبناء شراكة مهنية طويلة الأمد مع الأفراد والشركات والمستثمرين."
+        );
+      }
+
+      const { data: servicesData, error: servicesError } = await supabase
+        .from("services")
+        .select("id, title, description, sort_order")
+        .order("sort_order", { ascending: true });
+
+      if (servicesError) {
+        console.error(servicesError);
+        setError("حدث خطأ أثناء تحميل الخدمات.");
+      }
+
+      if (servicesData && servicesData.length > 0) {
+        setServices(servicesData);
+      }
+
+      const { data: messagesData, error: messagesError } = await supabase
+        .from("client_messages")
+        .select("id, name, phone, email, message, created_at")
+        .order("created_at", { ascending: false });
+
+      if (messagesError) {
+        console.error(messagesError);
+        setError("حدث خطأ أثناء تحميل رسائل العملاء.");
+      }
+
+      if (messagesData) {
+        setMessages(messagesData);
+      }
+    } catch (err) {
+      console.error(err);
+      setError("حدث خطأ غير متوقع أثناء تحميل البيانات.");
+    } finally {
+      setLoaded(true);
+    }
+  }
+
+  async function saveData() {
+    setSaving(true);
+    setSaved(false);
+    setError("");
+
+    try {
+      const settingsPayload = {
+        email,
+        phone,
+        whatsapp,
+        address,
+        hero_title: heroTitle,
+        vision,
+      };
+
+      if (settingsId) {
+        const { error: updateError } = await supabase
+          .from("site_settings")
+          .update(settingsPayload)
+          .eq("id", settingsId);
+
+        if (updateError) {
+          console.error(updateError);
+          setError("حدث خطأ أثناء حفظ إعدادات الموقع.");
+          return;
+        }
+      } else {
+        const { data: insertedSettings, error: insertError } = await supabase
+          .from("site_settings")
+          .insert(settingsPayload)
+          .select("id")
+          .single();
+
+        if (insertError) {
+          console.error(insertError);
+          setError("حدث خطأ أثناء إنشاء إعدادات الموقع.");
+          return;
+        }
+
+        if (insertedSettings) {
+          setSettingsId(insertedSettings.id);
+        }
+      }
+
+      const { error: deleteServicesError } = await supabase
+        .from("services")
+        .delete()
+        .neq("id", 0);
+
+      if (deleteServicesError) {
+        console.error(deleteServicesError);
+        setError("حدث خطأ أثناء تحديث الخدمات.");
+        return;
+      }
+
+      const cleanedServices = services
+        .filter((service) => service.title.trim() && service.description.trim())
+        .map((service, index) => ({
+          title: service.title.trim(),
+          description: service.description.trim(),
+          sort_order: index + 1,
+        }));
+
+      if (cleanedServices.length > 0) {
+        const { error: insertServicesError } = await supabase
+          .from("services")
+          .insert(cleanedServices);
+
+        if (insertServicesError) {
+          console.error(insertServicesError);
+          setError("حدث خطأ أثناء حفظ الخدمات.");
+          return;
+        }
+      }
+
+      setSaved(true);
+      await loadAllData();
+
+      setTimeout(() => {
+        setSaved(false);
+      }, 3000);
+    } catch (err) {
+      console.error(err);
+      setError("حدث خطأ غير متوقع أثناء الحفظ.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   function logout() {
@@ -120,7 +244,13 @@ export default function AdminPage() {
 
   function updateService(index: number, field: keyof ServiceItem, value: string) {
     const updated = [...services];
-    updated[index][field] = value;
+
+    if (field === "sort_order") {
+      updated[index].sort_order = Number(value);
+    } else {
+      updated[index][field] = value as never;
+    }
+
     setServices(updated);
   }
 
@@ -129,34 +259,57 @@ export default function AdminPage() {
       ...services,
       {
         title: "خدمة جديدة",
-        text: "اكتب وصف الخدمة هنا.",
+        description: "اكتب وصف الخدمة هنا.",
+        sort_order: services.length + 1,
       },
     ]);
   }
 
   function removeService(index: number) {
-    const updated = services.filter((_, itemIndex) => itemIndex !== index);
+    const updated = services
+      .filter((_, itemIndex) => itemIndex !== index)
+      .map((service, itemIndex) => ({
+        ...service,
+        sort_order: itemIndex + 1,
+      }));
+
     setServices(updated);
   }
 
-  function deleteMessage(id: number) {
-    const updatedMessages = messages.filter((message) => message.id !== id);
-    setMessages(updatedMessages);
-    localStorage.setItem(
-      "vera_client_messages",
-      JSON.stringify(updatedMessages)
-    );
+  async function deleteMessage(id: number) {
+    const { error: deleteError } = await supabase
+      .from("client_messages")
+      .delete()
+      .eq("id", id);
+
+    if (deleteError) {
+      console.error(deleteError);
+      setError("حدث خطأ أثناء حذف الرسالة.");
+      return;
+    }
+
+    setMessages(messages.filter((message) => message.id !== id));
   }
 
-  function clearMessages() {
+  async function clearMessages() {
     const confirmDelete = confirm("هل أنت متأكد من حذف كل رسائل العملاء؟");
 
     if (!confirmDelete) {
       return;
     }
 
+    const { error: deleteError } = await supabase
+      .from("client_messages")
+      .delete()
+      .neq("id", 0);
+
+    if (deleteError) {
+      console.error(deleteError);
+      setError("حدث خطأ أثناء حذف كل الرسائل.");
+      return;
+    }
+
     setMessages([]);
-    localStorage.removeItem("vera_client_messages");
   }
 
   if (!loaded) {
@@ -188,7 +341,8 @@ export default function AdminPage() {
             <h1 className="text-4xl font-black">لوحة التحكم</h1>
 
             <p className="mt-3 text-gray-300">
-              إدارة بيانات التواصل والخدمات والرؤية ورسائل العملاء.
+              إدارة بيانات الموقع والخدمات والرؤية ورسائل العملاء من قاعدة
+              البيانات.
             </p>
           </div>
 
@@ -211,7 +365,13 @@ export default function AdminPage() {
 
         {saved && (
           <div className="mb-8 rounded-2xl border border-green-400/30 bg-green-400/10 p-5 text-green-200">
-            تم حفظ البيانات بنجاح على هذا الجهاز.
+            تم حفظ التعديلات بنجاح في قاعدة البيانات.
+          </div>
+        )}
+
+        {error && (
+          <div className="mb-8 rounded-2xl border border-red-400/30 bg-red-400/10 p-5 text-red-200">
+            {error}
           </div>
         )}
 
@@ -237,12 +397,10 @@ export default function AdminPage() {
           </div>
 
           <div className="rounded-[2rem] border border-white/10 bg-white/[0.07] p-6 shadow-2xl backdrop-blur-xl">
-            <p className="mb-3 text-gray-300">البريد</p>
-            <h2 className="mb-3 text-2xl font-black text-amber-300" dir="ltr">
-              Active
-            </h2>
+            <p className="mb-3 text-gray-300">قاعدة البيانات</p>
+            <h2 className="mb-3 text-3xl font-black text-amber-300">Supabase</h2>
             <p className="text-sm leading-7 text-gray-400">
-              بيانات التواصل مفعلة
+              البيانات محفوظة أونلاين
             </p>
           </div>
 
@@ -250,7 +408,7 @@ export default function AdminPage() {
             <p className="mb-3 text-gray-300">حالة الموقع</p>
             <h2 className="mb-3 text-3xl font-black text-amber-300">نشط</h2>
             <p className="text-sm leading-7 text-gray-400">
-              يعمل محليًا على جهازك
+              يعمل على Vercel
             </p>
           </div>
         </div>
@@ -360,7 +518,7 @@ export default function AdminPage() {
           <div className="grid gap-6 lg:grid-cols-3">
             {services.map((service, index) => (
               <div
-                key={index}
+                key={`${service.title}-${index}`}
                 className="rounded-[2rem] border border-white/10 bg-black/30 p-6"
               >
                 <div className="mb-4 flex items-center justify-between gap-3">
@@ -391,9 +549,9 @@ export default function AdminPage() {
                   وصف الخدمة
                 </label>
                 <textarea
-                  value={service.text}
+                  value={service.description}
                   onChange={(e) =>
-                    updateService(index, "text", e.target.value)
+                    updateService(index, "description", e.target.value)
                   }
                   rows={5}
                   className="w-full rounded-2xl border border-white/10 bg-black/35 px-4 py-3 text-white outline-none focus:border-amber-300"
@@ -439,7 +597,7 @@ export default function AdminPage() {
                         {message.name}
                       </h3>
                       <p className="mt-1 text-sm text-gray-400">
-                        {message.date}
+                        {new Date(message.created_at).toLocaleString("ar-EG")}
                       </p>
                     </div>
 
@@ -476,6 +634,7 @@ export default function AdminPage() {
                     <a
                       href={`https://wa.me/${message.phone.replace(/\D/g, "")}`}
                       target="_blank"
+                      rel="noopener noreferrer"
                       className="rounded-full bg-amber-400 px-5 py-2 text-center font-bold text-black transition hover:bg-amber-300"
                     >
                       رد واتساب
@@ -499,9 +658,10 @@ export default function AdminPage() {
         <div className="mt-8 flex flex-col gap-4 sm:flex-row">
           <button
             onClick={saveData}
-            className="rounded-full bg-amber-400 px-10 py-4 font-black text-black shadow-[0_0_35px_rgba(251,191,36,0.35)] transition hover:bg-amber-300"
+            disabled={saving}
+            className="rounded-full bg-amber-400 px-10 py-4 font-black text-black shadow-[0_0_35px_rgba(251,191,36,0.35)] transition hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            حفظ التعديلات
+            {saving ? "جاري الحفظ..." : "حفظ التعديلات"}
           </button>
 
           <a
@@ -513,8 +673,8 @@ export default function AdminPage() {
         </div>
 
         <div className="mt-8 rounded-[2rem] border border-amber-300/20 bg-amber-300/10 p-6 text-amber-100">
-          هذه لوحة تحكم مبدئية تحفظ البيانات والرسائل على نفس المتصفح فقط.
-          المرحلة التالية هي ربطها بقاعدة بيانات حتى تعمل أونلاين لكل الزوار.
+          البيانات الآن مرتبطة بقاعدة بيانات Supabase. أي تعديل يتم حفظه هنا
+          يظهر للزوار بعد تحديث صفحات الموقع.
         </div>
       </section>
     </main>
